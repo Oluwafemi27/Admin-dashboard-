@@ -913,12 +913,12 @@ vercel --prod</code>
 <!-- TOAST -->
 <div id="toast"></div>
 
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 // ════════════════════════════════════════════
 //  CONFIG & STATE
 // ════════════════════════════════════════════
-let SUPABASE_URL = 'https://agrqjflxaouzqfdtokxq.supabase.co';
-let SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFncnFqZmx4YW91enFmZHRva3hxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTk0NTU0NCwiZXhwIjoyMDg3NTIxNTQ0fQ.4DmNb5z44oboi1HMr8YA_dDNakYOYekYHg4icroFPqs';
+let SUPABASE_URL = localStorage.getItem('sb_url') || '';
+let SUPABASE_KEY = localStorage.getItem('sb_key') || '';
 let allUsers = [], allAccounts = [], allMessages = [];
 
 // Pre-fill config inputs
@@ -997,7 +997,7 @@ async function doLogin() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error_description || 'Auth failed');
 
-    // Check admin role via user_roles table
+    // Check admin role
     const roles = await sb(`user_roles?user_id=eq.${data.user.id}&role=eq.admin&select=role`);
     if (!roles.length) {
       throw new Error('Not an admin account');
