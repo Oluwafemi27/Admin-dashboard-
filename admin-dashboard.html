@@ -997,9 +997,9 @@ async function doLogin() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error_description || 'Auth failed');
 
-    // Check admin role
-    const profiles = await sb(`profiles?id=eq.${data.user.id}&select=role`);
-    if (!profiles.length || profiles[0].role !== 'admin') {
+    // Check admin role via user_roles table
+    const roles = await sb(`user_roles?user_id=eq.${data.user.id}&role=eq.admin&select=role`);
+    if (!roles.length) {
       throw new Error('Not an admin account');
     }
 
