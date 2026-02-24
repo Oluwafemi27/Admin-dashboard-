@@ -5,3 +5,4 @@
   from = "/*"
   to = "/admin-dashboard.html"
   status = 200
+
