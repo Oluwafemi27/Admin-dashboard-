@@ -555,13 +555,16 @@
     <div id="login-error">⚠ Invalid credentials or not an admin</div>
 
     <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
-      <p style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono';margin-bottom:10px">⚙ Configure Supabase first:</p>
+      <p style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono';margin-bottom:10px">⚙ Configure Supabase:</p>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;color:var(--muted);font-family:'JetBrains Mono';word-break:break-all;">
+        Current URL: <span id="current-url-display">Not configured</span>
+      </div>
       <div class="field">
         <label>Supabase URL</label>
         <input type="text" id="cfg-url" placeholder="https://xxxx.supabase.co"/>
       </div>
       <div class="field">
-        <label>Service Role Key (anon key for read-only)</label>
+        <label>Service Role Key</label>
         <input type="text" id="cfg-key" placeholder="eyJhbGci..."/>
       </div>
       <button class="btn btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text)" onclick="saveConfig()">Save Config</button>
@@ -925,6 +928,7 @@ let allUsers = [], allAccounts = [], allMessages = [];
 window.onload = () => {
   document.getElementById('cfg-url').value = SUPABASE_URL;
   document.getElementById('cfg-key').value = SUPABASE_KEY;
+  document.getElementById('current-url-display').textContent = SUPABASE_URL || 'Not configured';
 };
 
 function saveConfig() {
@@ -932,6 +936,7 @@ function saveConfig() {
   SUPABASE_KEY = document.getElementById('cfg-key').value.trim();
   localStorage.setItem('sb_url', SUPABASE_URL);
   localStorage.setItem('sb_key', SUPABASE_KEY);
+  document.getElementById('current-url-display').textContent = SUPABASE_URL;
   toast('Config saved! Now sign in.', 'success');
 }
 
