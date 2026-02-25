@@ -124,6 +124,9 @@
   .btn-success { background: rgba(77,250,171,0.15); color: var(--success); border: 1px solid rgba(77,250,171,0.3); }
   .btn-success:hover { background: rgba(77,250,171,0.25); }
   .btn-sm { padding: 7px 14px; font-size: 12px; border-radius: 8px; }
+  .btn-config { background: var(--surface2); border: 1px solid var(--border); color: var(--text); width: 100%; justify-content: center; }
+  .btn-config:hover { background: rgba(255,255,255,0.08); }
+  .config-clear-btn { margin-top: 8px; }
 
   #login-error { color: var(--danger); font-size: 13px; margin-top: 12px; display: none; font-family: 'JetBrains Mono', monospace; }
 
@@ -284,6 +287,8 @@
     justify-content: space-between;
   }
   .card-title span { color: var(--muted); font-size: 12px; font-weight: 400; }
+  .view-all-link { cursor: pointer; color: var(--accent); }
+  .view-all-link:hover { text-decoration: underline; }
 
   /* ── TABLE ── */
   .table-wrap { overflow-x: auto; }
@@ -528,6 +533,30 @@
   }
   .inline-input input { flex: 1; }
 
+  /* ── CONFIG SECTION ── */
+  .config-section {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  .config-label {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    margin-bottom: 10px;
+  }
+  .config-display {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    word-break: break-all;
+  }
+
   @media (max-width: 900px) {
     .stats-grid { grid-template-columns: repeat(2,1fr); }
     .charts-row { grid-template-columns: 1fr; }
@@ -554,17 +583,21 @@
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
     <div id="login-error">⚠ Invalid credentials or not an admin</div>
 
-    <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
-      <p style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono';margin-bottom:10px">⚙ Configure Supabase first:</p>
+    <div class="config-section">
+      <p class="config-label">⚙ Configure Supabase:</p>
+      <div class="config-display">
+        Current URL: <span id="current-url-display">Not configured</span>
+      </div>
       <div class="field">
         <label>Supabase URL</label>
         <input type="text" id="cfg-url" placeholder="https://xxxx.supabase.co"/>
       </div>
       <div class="field">
-        <label>Service Role Key (anon key for read-only)</label>
+        <label>Service Role Key</label>
         <input type="text" id="cfg-key" placeholder="eyJhbGci..."/>
       </div>
-      <button class="btn btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text)" onclick="saveConfig()">Save Config</button>
+      <button class="btn btn-config" onclick="saveConfig()">Save Config</button>
+      <button class="btn btn-danger btn-sm config-clear-btn" onclick="clearConfig()">Clear Stored Config</button>
     </div>
   </div>
 </div>
@@ -667,7 +700,7 @@
       </div>
 
       <div class="card">
-        <div class="card-title">Latest Account Submissions <span onclick="showPage('accounts',document.querySelector('.nav-item:nth-child(4)'))" style="cursor:pointer;color:var(--accent)">View all →</span></div>
+        <div class="card-title">Latest Account Submissions <span class="view-all-link" onclick="showPage('accounts',document.querySelector('.nav-item:nth-child(4)'))">View all →</span></div>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Name</th><th>Bank</th><th>Account #</th><th>Submitted</th></tr></thead>
@@ -847,7 +880,7 @@ CREATE TRIGGER on_auth_user_created
         <div class="setup-step">
           <h4>Set your admin role</h4>
           <p>After signing up, run this to make yourself admin (replace the email):</p>
-          <code>UPDATE profiles SET role = 'admin' WHERE email = '<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="8bf2e4fef9cbeee6eae2e7a5e8e4e6">[email&#160;protected]</a>';</code>
+          <code>UPDATE profiles SET role = 'admin' WHERE email = 'your-email@example.com';</code>
         </div>
 
         <div class="setup-step">
@@ -913,7 +946,7 @@ vercel --prod</code>
 <!-- TOAST -->
 <div id="toast"></div>
 
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+<script>
 // ════════════════════════════════════════════
 //  CONFIG & STATE
 // ════════════════════════════════════════════
@@ -925,6 +958,7 @@ let allUsers = [], allAccounts = [], allMessages = [];
 window.onload = () => {
   document.getElementById('cfg-url').value = SUPABASE_URL;
   document.getElementById('cfg-key').value = SUPABASE_KEY;
+  document.getElementById('current-url-display').textContent = SUPABASE_URL || 'Not configured';
 };
 
 function saveConfig() {
@@ -932,7 +966,19 @@ function saveConfig() {
   SUPABASE_KEY = document.getElementById('cfg-key').value.trim();
   localStorage.setItem('sb_url', SUPABASE_URL);
   localStorage.setItem('sb_key', SUPABASE_KEY);
+  document.getElementById('current-url-display').textContent = SUPABASE_URL;
   toast('Config saved! Now sign in.', 'success');
+}
+
+function clearConfig() {
+  localStorage.removeItem('sb_url');
+  localStorage.removeItem('sb_key');
+  SUPABASE_URL = '';
+  SUPABASE_KEY = '';
+  document.getElementById('cfg-url').value = '';
+  document.getElementById('cfg-key').value = '';
+  document.getElementById('current-url-display').textContent = 'Not configured';
+  toast('Config cleared. Enter your credentials again.', 'success');
 }
 
 // ════════════════════════════════════════════
@@ -988,6 +1034,8 @@ async function doLogin() {
   }
 
   try {
+    console.log('🔐 Login attempt:', { email, supabaseUrl: SUPABASE_URL });
+
     // Sign in via Supabase Auth
     const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: 'POST',
@@ -997,10 +1045,17 @@ async function doLogin() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error_description || 'Auth failed');
 
-    // Check admin role
-    const profile = await sb(`profiles?id=eq.${data.user.id}&select=role`);
-    if (!profile.length || profile[0].role !== 'admin') {
-      throw new Error('Not an admin account');
+    console.log('✅ Auth successful, user ID:', data.user.id);
+
+    // Check admin role (using user_id column since that's what's in your table)
+    const profile = await sb(`profiles?user_id=eq.${data.user.id}&select=role`);
+    console.log('📋 Profile query result:', profile);
+
+    if (!profile.length) {
+      throw new Error('Profile not found in database. Make sure your admin account exists and the profiles table is set up correctly.');
+    }
+    if (profile[0].role !== 'admin') {
+      throw new Error(`Your role is "${profile[0].role}", but only "admin" can access this dashboard. Ask your database admin to set your role to admin.`);
     }
 
     // Set admin info
