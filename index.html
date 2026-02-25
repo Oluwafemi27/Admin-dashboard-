@@ -124,6 +124,9 @@
   .btn-success { background: rgba(77,250,171,0.15); color: var(--success); border: 1px solid rgba(77,250,171,0.3); }
   .btn-success:hover { background: rgba(77,250,171,0.25); }
   .btn-sm { padding: 7px 14px; font-size: 12px; border-radius: 8px; }
+  .btn-config { background: var(--surface2); border: 1px solid var(--border); color: var(--text); width: 100%; justify-content: center; }
+  .btn-config:hover { background: rgba(255,255,255,0.08); }
+  .config-clear-btn { margin-top: 8px; }
 
   #login-error { color: var(--danger); font-size: 13px; margin-top: 12px; display: none; font-family: 'JetBrains Mono', monospace; }
 
@@ -284,6 +287,8 @@
     justify-content: space-between;
   }
   .card-title span { color: var(--muted); font-size: 12px; font-weight: 400; }
+  .view-all-link { cursor: pointer; color: var(--accent); }
+  .view-all-link:hover { text-decoration: underline; }
 
   /* ── TABLE ── */
   .table-wrap { overflow-x: auto; }
@@ -528,6 +533,30 @@
   }
   .inline-input input { flex: 1; }
 
+  /* ── CONFIG SECTION ── */
+  .config-section {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  .config-label {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    margin-bottom: 10px;
+  }
+  .config-display {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    word-break: break-all;
+  }
+
   @media (max-width: 900px) {
     .stats-grid { grid-template-columns: repeat(2,1fr); }
     .charts-row { grid-template-columns: 1fr; }
@@ -554,9 +583,9 @@
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
     <div id="login-error">⚠ Invalid credentials or not an admin</div>
 
-    <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
-      <p style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono';margin-bottom:10px">⚙ Configure Supabase:</p>
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;color:var(--muted);font-family:'JetBrains Mono';word-break:break-all;">
+    <div class="config-section">
+      <p class="config-label">⚙ Configure Supabase:</p>
+      <div class="config-display">
         Current URL: <span id="current-url-display">Not configured</span>
       </div>
       <div class="field">
@@ -567,8 +596,8 @@
         <label>Service Role Key</label>
         <input type="text" id="cfg-key" placeholder="eyJhbGci..."/>
       </div>
-      <button class="btn btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text)" onclick="saveConfig()">Save Config</button>
-      <button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="clearConfig()">Clear Stored Config</button>
+      <button class="btn btn-config" onclick="saveConfig()">Save Config</button>
+      <button class="btn btn-danger btn-sm config-clear-btn" onclick="clearConfig()">Clear Stored Config</button>
     </div>
   </div>
 </div>
@@ -671,7 +700,7 @@
       </div>
 
       <div class="card">
-        <div class="card-title">Latest Account Submissions <span onclick="showPage('accounts',document.querySelector('.nav-item:nth-child(4)'))" style="cursor:pointer;color:var(--accent)">View all →</span></div>
+        <div class="card-title">Latest Account Submissions <span class="view-all-link" onclick="showPage('accounts',document.querySelector('.nav-item:nth-child(4)'))">View all →</span></div>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Name</th><th>Bank</th><th>Account #</th><th>Submitted</th></tr></thead>
@@ -698,8 +727,8 @@
       <div class="card">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Email</th><th>Role</th><th>Joined</th><th>ID</th><th>Actions</th></tr></thead>
-            <tbody id="users-tbody"><tr><td colspan="5" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr></tbody>
+            <thead><tr><th>Email</th><th>Username</th><th>Role</th><th>Wallet Balance</th><th>Joined</th><th>Actions</th></tr></thead>
+            <tbody id="users-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -796,7 +825,9 @@
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users(id) PRIMARY KEY,
   email TEXT,
+  username TEXT,
   role TEXT DEFAULT 'user',
+  wallet_balance DECIMAL(18,2) DEFAULT 0.00,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -885,6 +916,7 @@ vercel --prod</code>
     <h3>Edit User</h3>
     <input type="hidden" id="edit-user-id"/>
     <div class="field"><label>Email</label><input type="email" id="edit-user-email" class="search-input" style="width:100%"/></div>
+    <div class="field" style="margin-top:12px"><label>Username</label><input type="text" id="edit-user-username" class="search-input" style="width:100%"/></div>
     <div class="field" style="margin-top:12px">
       <label>Role</label>
       <select id="edit-user-role" style="width:100%">
@@ -892,6 +924,7 @@ vercel --prod</code>
         <option value="admin">admin</option>
       </select>
     </div>
+    <div class="field" style="margin-top:12px"><label>Wallet Balance</label><input type="number" id="edit-user-wallet" class="search-input" style="width:100%" step="0.01" min="0"/></div>
     <div class="modal-footer">
       <button class="btn btn-danger" onclick="closeModal('edit-user-modal')">Cancel</button>
       <button class="btn btn-success" onclick="saveUser()">Save Changes</button>
@@ -1182,11 +1215,11 @@ async function loadRecentAccounts() {
 // ════════════════════════════════════════════
 async function loadUsers() {
   const tbody = document.getElementById('users-tbody');
-  tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr>`;
   try {
     allUsers = await sb('profiles?select=*&order=created_at.desc');
     renderUsers(allUsers);
-  } catch(e) { tbody.innerHTML = `<tr><td colspan="5" style="color:var(--danger);padding:20px">Error: ${e.message}</td></tr>`; }
+  } catch(e) { tbody.innerHTML = `<tr><td colspan="6" style="color:var(--danger);padding:20px">Error: ${e.message}</td></tr>`; }
 }
 
 function renderUsers(data) {
@@ -1194,32 +1227,37 @@ function renderUsers(data) {
   tbody.innerHTML = data.length ? data.map(u => `
     <tr>
       <td>${u.email || '—'}</td>
+      <td>${u.username || '—'}</td>
       <td><span class="tag tag-${u.role === 'admin' ? 'admin' : 'user'}">${u.role || 'user'}</span></td>
+      <td style="font-family:'JetBrains Mono';font-size:12px">$${parseFloat(u.wallet_balance || 0).toFixed(2)}</td>
       <td style="color:var(--muted);font-size:12px">${fmt(u.created_at)}</td>
-      <td style="font-family:'JetBrains Mono';font-size:11px;color:var(--muted)">${u.id?.slice(0,8)}…</td>
       <td>
-        <button class="btn btn-success btn-sm" onclick="openEditUser('${u.id}','${u.email}','${u.role||'user'}')">Edit</button>
+        <button class="btn btn-success btn-sm" onclick="openEditUser('${u.id}','${u.email}','${u.username || ''}','${u.role||'user'}','${u.wallet_balance || 0}')">Edit</button>
         <button class="btn btn-danger btn-sm" style="margin-left:6px" onclick="deleteUser('${u.id}')">Delete</button>
       </td>
-    </tr>`).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:40px">No users found</td></tr>`;
+    </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">No users found</td></tr>`;
 }
 
 function filterUsers(q) { renderUsers(allUsers.filter(u => u.email?.toLowerCase().includes(q.toLowerCase()))); }
 function filterUserRole(r) { renderUsers(r ? allUsers.filter(u => (u.role||'user') === r) : allUsers); }
 
-function openEditUser(id, email, role) {
+function openEditUser(id, email, username, role, wallet) {
   document.getElementById('edit-user-id').value = id;
   document.getElementById('edit-user-email').value = email;
+  document.getElementById('edit-user-username').value = username;
   document.getElementById('edit-user-role').value = role;
+  document.getElementById('edit-user-wallet').value = wallet;
   document.getElementById('edit-user-modal').classList.add('open');
 }
 
 async function saveUser() {
   const id = document.getElementById('edit-user-id').value;
   const email = document.getElementById('edit-user-email').value;
+  const username = document.getElementById('edit-user-username').value;
   const role = document.getElementById('edit-user-role').value;
+  const wallet_balance = parseFloat(document.getElementById('edit-user-wallet').value) || 0;
   try {
-    await sb(`profiles?id=eq.${id}`, { method: 'PATCH', body: { email, role } });
+    await sb(`profiles?id=eq.${id}`, { method: 'PATCH', body: { email, username, role, wallet_balance } });
     closeModal('edit-user-modal');
     toast('User updated!', 'success');
     loadUsers();
