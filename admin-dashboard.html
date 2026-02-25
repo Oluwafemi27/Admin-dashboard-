@@ -998,8 +998,8 @@ async function doLogin() {
     if (!res.ok) throw new Error(data.error_description || 'Auth failed');
 
     // Check admin role
-    const roles = await sb(`user_roles?user_id=eq.${data.user.id}&role=eq.admin&select=role`);
-    if (!roles.length) {
+    const profile = await sb(`profiles?id=eq.${data.user.id}&select=role`);
+    if (!profile.length || profile[0].role !== 'admin') {
       throw new Error('Not an admin account');
     }
 
@@ -1400,4 +1400,8 @@ function timeAgo(iso) {
   if(diff < 60) return 'just now';
   if(diff < 3600) return `${Math.floor(diff/60)}m ago`;
   if(diff < 86400) return `${Math.floor(diff/3600)}h ago`;
-  return `${Math.floor(diff/86400)}
+  return `${Math.floor(diff/86400)}d ago`;
+}
+</script>
+</body>
+</html>
