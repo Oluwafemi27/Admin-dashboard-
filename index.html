@@ -1018,8 +1018,8 @@ async function doLogin() {
 
     console.log('✅ Auth successful, user ID:', data.user.id);
 
-    // Check admin role
-    const profile = await sb(`profiles?id=eq.${data.user.id}&select=role`);
+    // Check admin role (using user_id column since that's what's in your table)
+    const profile = await sb(`profiles?user_id=eq.${data.user.id}&select=role`);
     console.log('📋 Profile query result:', profile);
 
     if (!profile.length) {
