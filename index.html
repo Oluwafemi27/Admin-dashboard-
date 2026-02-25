@@ -999,8 +999,11 @@ async function doLogin() {
 
     // Check admin role
     const profile = await sb(`profiles?id=eq.${data.user.id}&select=role`);
-    if (!profile.length || profile[0].role !== 'admin') {
-      throw new Error('Not an admin account');
+    if (!profile.length) {
+      throw new Error('Profile not found in database. Make sure your admin account exists and the profiles table is set up correctly.');
+    }
+    if (profile[0].role !== 'admin') {
+      throw new Error(`Your role is "${profile[0].role}", but only "admin" can access this dashboard. Ask your database admin to set your role to admin.`);
     }
 
     // Set admin info
