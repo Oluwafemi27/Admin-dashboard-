@@ -568,6 +568,7 @@
         <input type="text" id="cfg-key" placeholder="eyJhbGci..."/>
       </div>
       <button class="btn btn-primary" style="background:var(--surface2);border:1px solid var(--border);color:var(--text)" onclick="saveConfig()">Save Config</button>
+      <button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="clearConfig()">Clear Stored Config</button>
     </div>
   </div>
 </div>
@@ -940,6 +941,17 @@ function saveConfig() {
   toast('Config saved! Now sign in.', 'success');
 }
 
+function clearConfig() {
+  localStorage.removeItem('sb_url');
+  localStorage.removeItem('sb_key');
+  SUPABASE_URL = '';
+  SUPABASE_KEY = '';
+  document.getElementById('cfg-url').value = '';
+  document.getElementById('cfg-key').value = '';
+  document.getElementById('current-url-display').textContent = 'Not configured';
+  toast('Config cleared. Enter your credentials again.', 'success');
+}
+
 // ════════════════════════════════════════════
 //  SUPABASE API HELPER
 // ════════════════════════════════════════════
@@ -993,6 +1005,8 @@ async function doLogin() {
   }
 
   try {
+    console.log('🔐 Login attempt:', { email, supabaseUrl: SUPABASE_URL });
+
     // Sign in via Supabase Auth
     const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: 'POST',
@@ -1002,8 +1016,12 @@ async function doLogin() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error_description || 'Auth failed');
 
+    console.log('✅ Auth successful, user ID:', data.user.id);
+
     // Check admin role
     const profile = await sb(`profiles?id=eq.${data.user.id}&select=role`);
+    console.log('📋 Profile query result:', profile);
+
     if (!profile.length) {
       throw new Error('Profile not found in database. Make sure your admin account exists and the profiles table is set up correctly.');
     }
