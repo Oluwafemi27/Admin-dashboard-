@@ -3,6 +3,5 @@
 
 [[redirects]]
   from = "/*"
-  to = "/admin-dashboard.html"
+  to = "/index.html"
   status = 200
-
