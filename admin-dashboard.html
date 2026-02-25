@@ -825,7 +825,9 @@
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users(id) PRIMARY KEY,
   email TEXT,
+  username TEXT,
   role TEXT DEFAULT 'user',
+  wallet_balance DECIMAL(18,2) DEFAULT 0.00,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
