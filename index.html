@@ -1492,23 +1492,32 @@ async function sendNotification() {
   if(!title || !body) { toast('Title and body are required', 'error'); return; }
 
   try {
+    console.log('📤 Sending notification...', { title, body, target, userId });
+
     if(target === 'all') {
       // Get all users and send to each
+      console.log('📋 Fetching all users...');
       const users = await sb('profiles?select=id');
+      console.log(`👥 Found ${users.length} users`);
       const inserts = users.map(u => ({ user_id: u.id, title, body }));
       // Batch insert
+      console.log('📮 Inserting notifications...');
       await sb('notifications', { method: 'POST', body: inserts, prefer: 'return=minimal' });
-      toast(`Notification sent to ${users.length} users!`, 'success');
+      toast(`✓ Notification sent to ${users.length} users!`, 'success');
     } else {
       if(!userId) { toast('Please enter a User ID', 'error'); return; }
+      console.log(`📮 Inserting notification for user: ${userId}`);
       await sb('notifications', { method: 'POST', body: { user_id: userId, title, body }, prefer: 'return=minimal' });
-      toast('Notification sent!', 'success');
+      toast('✓ Notification sent!', 'success');
     }
     document.getElementById('notif-title').value = '';
     document.getElementById('notif-body').value = '';
     loadNotifications();
     loadStats();
-  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  } catch(e) {
+    console.error('❌ Notification error:', e);
+    toast('Error: ' + e.message, 'error');
+  }
 }
 
 async function deleteNotif(id) {
