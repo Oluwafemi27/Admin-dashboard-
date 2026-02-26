@@ -727,8 +727,8 @@
       <div class="card">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Email</th><th>Role</th><th>Joined</th><th>ID</th><th>Actions</th></tr></thead>
-            <tbody id="users-tbody"><tr><td colspan="5" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr></tbody>
+            <thead><tr><th>Email</th><th>Role</th><th>Joined</th><th>ID</th><th>Withdrawals</th><th>Actions</th></tr></thead>
+            <tbody id="users-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -828,6 +828,14 @@ CREATE TABLE IF NOT EXISTS profiles (
   username TEXT,
   role TEXT DEFAULT 'user',
   wallet_balance DECIMAL(18,2) DEFAULT 0.00,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Wallets table (for withdrawal status)
+CREATE TABLE IF NOT EXISTS wallets (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  withdrawals_enabled BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -1213,26 +1221,77 @@ async function loadRecentAccounts() {
 // ════════════════════════════════════════════
 async function loadUsers() {
   const tbody = document.getElementById('users-tbody');
-  tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr>`;
   try {
-    allUsers = await sb('profiles?select=*&order=created_at.desc');
+    // Attempt to join with wallets table
+    allUsers = await sb('profiles?select=*,wallets(withdrawals_enabled)&order=created_at.desc');
     renderUsers(allUsers);
-  } catch(e) { tbody.innerHTML = `<tr><td colspan="5" style="color:var(--danger);padding:20px">Error: ${e.message}</td></tr>`; }
+  } catch(e) {
+    console.warn('Join with wallets failed, falling back to profiles only:', e.message);
+    try {
+      allUsers = await sb('profiles?select=*&order=created_at.desc');
+      renderUsers(allUsers);
+    } catch(e2) {
+      tbody.innerHTML = `<tr><td colspan="6" style="color:var(--danger);padding:20px">Error: ${e2.message}</td></tr>`;
+    }
+  }
 }
 
 function renderUsers(data) {
   const tbody = document.getElementById('users-tbody');
-  tbody.innerHTML = data.length ? data.map(u => `
+  tbody.innerHTML = data.length ? data.map(u => {
+    const wStatus = u.wallets && u.wallets[0] ? u.wallets[0].withdrawals_enabled : (u.withdrawals_enabled !== undefined ? u.withdrawals_enabled : true);
+    return `
     <tr>
       <td>${u.email || '—'}</td>
       <td><span class="tag tag-${u.role === 'admin' ? 'admin' : 'user'}">${u.role || 'user'}</span></td>
       <td style="color:var(--muted);font-size:12px">${fmt(u.created_at)}</td>
       <td style="font-family:'JetBrains Mono';font-size:11px;color:var(--muted)">${u.id?.slice(0,8)}…</td>
       <td>
+        <button class="btn ${wStatus ? 'btn-danger' : 'btn-success'} btn-sm" onclick="toggleUserWithdrawals('${u.id}', ${!wStatus})">
+          ${wStatus ? 'Disable' : 'Enable'}
+        </button>
+      </td>
+      <td>
         <button class="btn btn-success btn-sm" onclick="openEditUser('${u.id}','${u.email}','${u.role||'user'}')">Edit</button>
         <button class="btn btn-danger btn-sm" style="margin-left:6px" onclick="deleteUser('${u.id}')">Delete</button>
       </td>
-    </tr>`).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:40px">No users found</td></tr>`;
+    </tr>`;
+  }).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">No users found</td></tr>`;
+}
+
+async function toggleUserWithdrawals(userId, enabled) {
+  try {
+    // Check if user has a wallet record first, or just try to update
+    await sb(`wallets?user_id=eq.${userId}`, {
+      method: 'PATCH',
+      body: { withdrawals_enabled: enabled }
+    }).then(async res => {
+      // If no record was updated, we might need to insert one
+      if (res.length === 0) {
+        await sb('wallets', {
+          method: 'POST',
+          body: { user_id: userId, withdrawals_enabled: enabled },
+          prefer: 'return=minimal'
+        });
+      }
+    });
+
+    toast(`Withdrawals ${enabled ? 'enabled' : 'disabled'}`, 'success');
+    loadUsers();
+  } catch(e) {
+    // Fallback: try updating profiles table if wallets table doesn't exist
+    try {
+      await sb(`profiles?id=eq.${userId}`, {
+        method: 'PATCH',
+        body: { withdrawals_enabled: enabled }
+      });
+      toast(`Withdrawals ${enabled ? 'enabled' : 'disabled'} (in profiles)`, 'success');
+      loadUsers();
+    } catch(e2) {
+      toast('Error: ' + e.message, 'error');
+    }
+  }
 }
 
 function filterUsers(q) { renderUsers(allUsers.filter(u => u.email?.toLowerCase().includes(q.toLowerCase()))); }
