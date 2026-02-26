@@ -1374,7 +1374,22 @@ async function saveUser() {
     console.log('Saving user:', { id, email, username, role, wallet_balance });
     // Update profiles table
     await sb(`profiles?id=eq.${id}`, { method: 'PATCH', body: { username, role, wallet_balance } });
-    console.log('✓ User saved successfully:', id);
+    console.log('✓ User saved in profiles:', id);
+
+    // Also update wallets.balance if wallet exists
+    try {
+      const userObj = allUsers.find(u => u.id === id);
+      if (userObj && userObj.user_id) {
+        await sb(`wallets?user_id=eq.${userObj.user_id}`, {
+          method: 'PATCH',
+          body: { balance: wallet_balance }
+        });
+        console.log('✓ Wallet balance updated:', userObj.user_id);
+      }
+    } catch(e) {
+      console.warn('Could not update wallets table balance:', e.message);
+    }
+
     toast('✓ User updated!', 'success');
     closeModal('edit-user-modal');
     loadUsers();
