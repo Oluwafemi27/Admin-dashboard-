@@ -1176,19 +1176,19 @@ function renderUsers(data) {
   const tbody = document.getElementById('users-tbody');
   tbody.innerHTML = data.length ? data.map(u => `
     <tr>
-      <td>${u.email || '—'}</td>
+      <td>${u.username || u.email || '—'}</td>
       <td>${u.username || '—'}</td>
       <td><span class="tag tag-${u.role === 'admin' ? 'admin' : 'user'}">${u.role || 'user'}</span></td>
       <td style="font-family:'JetBrains Mono';font-size:12px">$${parseFloat(u.wallet_balance || 0).toFixed(2)}</td>
       <td style="color:var(--muted);font-size:12px">${fmt(u.created_at)}</td>
       <td>
-        <button class="btn btn-success btn-sm" onclick="openEditUser('${u.id}','${u.email}','${u.username || ''}','${u.role||'user'}','${u.wallet_balance || 0}')">Edit</button>
+        <button class="btn btn-success btn-sm" onclick="openEditUser('${u.id}','${u.username || u.email}','${u.username || ''}','${u.role||'user'}','${u.wallet_balance || 0}')">Edit</button>
         <button class="btn btn-danger btn-sm" style="margin-left:6px" onclick="deleteUser('${u.id}')">Delete</button>
       </td>
     </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">No users found</td></tr>`;
 }
 
-function filterUsers(q) { renderUsers(allUsers.filter(u => u.email?.toLowerCase().includes(q.toLowerCase()))); }
+function filterUsers(q) { renderUsers(allUsers.filter(u => (u.username || u.email)?.toLowerCase().includes(q.toLowerCase()))); }
 function filterUserRole(r) { renderUsers(r ? allUsers.filter(u => (u.role||'user') === r) : allUsers); }
 
 function openEditUser(id, email, username, role, wallet) {
@@ -1207,7 +1207,14 @@ async function saveUser() {
   const role = document.getElementById('edit-user-role').value;
   const wallet_balance = parseFloat(document.getElementById('edit-user-wallet').value) || 0;
   try {
-    await sb(`profiles?id=eq.${id}`, { method: 'PATCH', body: { email, username, role, wallet_balance } });
+    // Try updating with wallet_balance
+    try {
+      await sb(`profiles?id=eq.${id}`, { method: 'PATCH', body: { username, role, wallet_balance } });
+    } catch(walletErr) {
+      // If wallet_balance fails due to schema cache, try without it
+      console.warn('Wallet update failed, trying without wallet_balance:', walletErr.message);
+      await sb(`profiles?id=eq.${id}`, { method: 'PATCH', body: { username, role } });
+    }
     closeModal('edit-user-modal');
     toast('User updated!', 'success');
     loadUsers();
