@@ -1373,7 +1373,7 @@ async function saveUser() {
   try {
     console.log('Saving user:', { id, email, username, role, wallet_balance });
     // Update profiles table
-    await sb(`profiles?user_id=eq.${id}`, { method: 'PATCH', body: { username, role, wallet_balance } });
+    await sb(`profiles?id=eq.${id}`, { method: 'PATCH', body: { username, role, wallet_balance } });
     console.log('✓ User saved successfully:', id);
     toast('✓ User updated!', 'success');
     closeModal('edit-user-modal');
@@ -1387,7 +1387,7 @@ async function saveUser() {
 async function deleteUser(id) {
   if(!confirm('Delete this user? This cannot be undone.')) return;
   try {
-    await sb(`profiles?user_id=eq.${id}`, { method: 'DELETE', prefer: 'return=minimal' });
+    await sb(`profiles?id=eq.${id}`, { method: 'DELETE', prefer: 'return=minimal' });
     toast('User deleted', 'success');
     loadUsers();
     loadStats();
