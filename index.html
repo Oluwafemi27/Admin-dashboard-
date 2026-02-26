@@ -1234,7 +1234,7 @@ async function loadUsers() {
     try {
       const wallets = await sb('wallets?select=user_id,withdrawals_enabled');
       allUsers = allUsers.map(u => {
-        const wallet = wallets.find(w => w.user_id === u.id);
+        const wallet = wallets.find(w => w.user_id === u.user_id);
         return { ...u, wallets: wallet ? [wallet] : [] };
       });
       console.log('Enriched users with wallets data:', allUsers);
@@ -1300,7 +1300,7 @@ function renderUsers(data) {
       <td style="font-family:'JetBrains Mono';font-size:12px">$${parseFloat(u.wallet_balance || 0).toFixed(2)}</td>
       <td style="color:var(--muted);font-size:12px">${fmt(u.created_at)}</td>
       <td>
-        <button class="btn ${wStatus ? 'btn-success' : 'btn-danger'} btn-sm" onclick="toggleUserWithdrawals('${u.id}', ${!wStatus})" style="min-width:80px">
+        <button class="btn ${wStatus ? 'btn-success' : 'btn-danger'} btn-sm" onclick="toggleUserWithdrawals('${u.user_id}', ${!wStatus})" style="min-width:80px">
           ${wStatus ? 'ACTIVE' : 'DISABLED'}
         </button>
       </td>
@@ -1338,7 +1338,7 @@ async function toggleUserWithdrawals(userId, enabled) {
     // Fallback: try updating profiles table if wallets table doesn't exist
     try {
       console.log(`Wallet update failed, falling back to profiles table:`, e.message);
-      await sb(`profiles?id=eq.${userId}`, {
+      await sb(`profiles?user_id=eq.${userId}`, {
         method: 'PATCH',
         body: { withdrawals_enabled: enabled }
       });
@@ -1374,7 +1374,22 @@ async function saveUser() {
     console.log('Saving user:', { id, email, username, role, wallet_balance });
     // Update profiles table
     await sb(`profiles?id=eq.${id}`, { method: 'PATCH', body: { username, role, wallet_balance } });
-    console.log('✓ User saved successfully:', id);
+    console.log('✓ User saved in profiles:', id);
+
+    // Also update wallets.balance if wallet exists
+    try {
+      const userObj = allUsers.find(u => u.id === id);
+      if (userObj && userObj.user_id) {
+        await sb(`wallets?user_id=eq.${userObj.user_id}`, {
+          method: 'PATCH',
+          body: { balance: wallet_balance }
+        });
+        console.log('✓ Wallet balance updated:', userObj.user_id);
+      }
+    } catch(e) {
+      console.warn('Could not update wallets table balance:', e.message);
+    }
+
     toast('✓ User updated!', 'success');
     closeModal('edit-user-modal');
     loadUsers();
