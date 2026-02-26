@@ -6,6 +6,7 @@
 <title>Admin Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
 <style>
   :root {
     --bg: #0a0a0f;
@@ -1038,6 +1039,7 @@ async function doLogin() {
 
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
+    initRealtime();
     refreshAll();
 
   } catch(e) {
@@ -1544,6 +1546,112 @@ function timeAgo(iso) {
   if(diff < 3600) return `${Math.floor(diff/60)}m ago`;
   if(diff < 86400) return `${Math.floor(diff/3600)}h ago`;
   return `${Math.floor(diff/86400)}d ago`;
+}
+
+// ════════════════════════════════════════════
+//  REALTIME SUBSCRIPTIONS
+// ════════════════════════════════════════════
+let supabaseClient = null;
+
+async function initRealtime() {
+  try {
+    const { createClient } = window.supabase;
+    supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
+    subscribeToRealtimeChanges();
+    console.log('✓ Real-time subscriptions initialized');
+  } catch(e) {
+    console.warn('Real-time init error:', e.message);
+  }
+}
+
+function subscribeToRealtimeChanges() {
+  if(!supabaseClient) return;
+
+  // Subscribe to notifications changes
+  supabaseClient.channel('notifications-changes')
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'notifications'
+    }, (payload) => {
+      console.log('📬 Notifications changed:', payload.eventType);
+      if(document.getElementById('page-notifications').classList.contains('active')) {
+        loadNotifications();
+      }
+      loadStats();
+    })
+    .subscribe();
+
+  // Subscribe to messages changes
+  supabaseClient.channel('messages-changes')
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'messages'
+    }, (payload) => {
+      console.log('💬 Messages changed:', payload.eventType);
+      if(document.getElementById('page-messages').classList.contains('active')) {
+        loadMessages();
+      }
+      loadStats();
+    })
+    .subscribe();
+
+  // Subscribe to wallets changes
+  supabaseClient.channel('wallets-changes')
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'wallets'
+    }, (payload) => {
+      console.log('💰 Wallets changed:', payload.eventType);
+      if(document.getElementById('page-users').classList.contains('active')) {
+        loadUsers();
+      }
+    })
+    .subscribe();
+
+  // Subscribe to accounts changes
+  supabaseClient.channel('accounts-changes')
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'accounts'
+    }, (payload) => {
+      console.log('🏦 Accounts changed:', payload.eventType);
+      if(document.getElementById('page-accounts').classList.contains('active')) {
+        loadAccounts();
+      }
+      loadStats();
+    })
+    .subscribe();
+
+  // Subscribe to profiles changes
+  supabaseClient.channel('profiles-changes')
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'profiles'
+    }, (payload) => {
+      console.log('👤 Profiles changed:', payload.eventType);
+      if(document.getElementById('page-users').classList.contains('active')) {
+        loadUsers();
+      }
+      loadStats();
+    })
+    .subscribe();
+
+  // Subscribe to settings changes (global withdrawals toggle)
+  supabaseClient.channel('settings-changes')
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'settings2'
+    }, (payload) => {
+      console.log('⚙️  Settings changed:', payload.eventType);
+      updateGlobalWithdrawalsBtn();
+    })
+    .subscribe();
 }
 </script>
 </body>
