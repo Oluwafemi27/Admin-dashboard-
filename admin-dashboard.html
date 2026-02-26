@@ -723,12 +723,16 @@
           <option value="admin">Admin</option>
           <option value="user">User</option>
         </select>
+        <div style="display:flex;align-items:center;gap:10px;margin-left:auto;background:var(--surface2);padding:6px 14px;border-radius:10px;border:1px solid var(--border)">
+          <span style="font-size:12px;font-weight:700;color:var(--muted)">GLOBAL WITHDRAWALS:</span>
+          <button id="global-withdrawals-btn" class="btn btn-sm" onclick="toggleGlobalWithdrawals()">Loading…</button>
+        </div>
       </div>
       <div class="card">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Email</th><th>Role</th><th>Joined</th><th>ID</th><th>Actions</th></tr></thead>
-            <tbody id="users-tbody"><tr><td colspan="5" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr></tbody>
+            <thead><tr><th>Email</th><th>Role</th><th>Joined</th><th>ID</th><th>Withdrawals</th><th>Actions</th></tr></thead>
+            <tbody id="users-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -831,6 +835,14 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Wallets table (for withdrawal status)
+CREATE TABLE IF NOT EXISTS wallets (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  withdrawals_enabled BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Account details
 CREATE TABLE IF NOT EXISTS accounts (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -859,7 +871,15 @@ CREATE TABLE IF NOT EXISTS notifications (
   body TEXT NOT NULL,
   read BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
-);</code>
+);
+
+-- App Settings (Global toggle)
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value JSONB,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+INSERT INTO settings (key, value) VALUES ('withdrawals_enabled', 'true') ON CONFLICT DO NOTHING;</code>
         </div>
 
         <div class="setup-step">
@@ -1211,28 +1231,124 @@ async function loadRecentAccounts() {
 // ════════════════════════════════════════════
 //  USERS
 // ════════════════════════════════════════════
+let globalWithdrawalsEnabled = true;
+
 async function loadUsers() {
   const tbody = document.getElementById('users-tbody');
-  tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr>`;
   try {
-    allUsers = await sb('profiles?select=*&order=created_at.desc');
+    // Load Global Setting
+    try {
+      const settings = await sb('settings?key=eq.withdrawals_enabled');
+      if (settings.length > 0) {
+        globalWithdrawalsEnabled = settings[0].value === true || settings[0].value === 'true';
+        updateGlobalWithdrawalsBtn();
+      }
+    } catch(e) { console.warn('Settings table error:', e.message); }
+
+    // Attempt to join with wallets table
+    allUsers = await sb('profiles?select=*,wallets(withdrawals_enabled)&order=created_at.desc');
     renderUsers(allUsers);
-  } catch(e) { tbody.innerHTML = `<tr><td colspan="5" style="color:var(--danger);padding:20px">Error: ${e.message}</td></tr>`; }
+  } catch(e) {
+    console.warn('Join with wallets failed, falling back to profiles only:', e.message);
+    try {
+      allUsers = await sb('profiles?select=*&order=created_at.desc');
+      renderUsers(allUsers);
+    } catch(e2) {
+      tbody.innerHTML = `<tr><td colspan="6" style="color:var(--danger);padding:20px">Error: ${e2.message}</td></tr>`;
+    }
+  }
+}
+
+function updateGlobalWithdrawalsBtn() {
+  const btn = document.getElementById('global-withdrawals-btn');
+  if (!btn) return;
+  btn.textContent = globalWithdrawalsEnabled ? 'ACTIVE' : 'DISABLED';
+  btn.className = `btn btn-sm ${globalWithdrawalsEnabled ? 'btn-success' : 'btn-danger'}`;
+}
+
+async function toggleGlobalWithdrawals() {
+  const newState = !globalWithdrawalsEnabled;
+  try {
+    await sb('settings?key=eq.withdrawals_enabled', {
+      method: 'PATCH',
+      body: { value: newState }
+    });
+    globalWithdrawalsEnabled = newState;
+    updateGlobalWithdrawalsBtn();
+    toast(`Global withdrawals ${newState ? 'enabled' : 'disabled'}`, 'success');
+  } catch(e) {
+    // Try insert if patch fails
+    try {
+      await sb('settings', {
+        method: 'POST',
+        body: { key: 'withdrawals_enabled', value: newState },
+        prefer: 'return=minimal'
+      });
+      globalWithdrawalsEnabled = newState;
+      updateGlobalWithdrawalsBtn();
+      toast(`Global withdrawals ${newState ? 'enabled' : 'disabled'}`, 'success');
+    } catch(e2) {
+      toast('Error: ' + e.message, 'error');
+    }
+  }
 }
 
 function renderUsers(data) {
   const tbody = document.getElementById('users-tbody');
-  tbody.innerHTML = data.length ? data.map(u => `
+  tbody.innerHTML = data.length ? data.map(u => {
+    const wStatus = u.wallets && u.wallets[0] ? u.wallets[0].withdrawals_enabled : (u.withdrawals_enabled !== undefined ? u.withdrawals_enabled : true);
+    return `
     <tr>
       <td>${u.email || '—'}</td>
       <td><span class="tag tag-${u.role === 'admin' ? 'admin' : 'user'}">${u.role || 'user'}</span></td>
       <td style="color:var(--muted);font-size:12px">${fmt(u.created_at)}</td>
       <td style="font-family:'JetBrains Mono';font-size:11px;color:var(--muted)">${u.id?.slice(0,8)}…</td>
       <td>
+        <button class="btn ${wStatus ? 'btn-success' : 'btn-danger'} btn-sm" onclick="toggleUserWithdrawals('${u.id}', ${!wStatus})" style="min-width:80px">
+          ${wStatus ? 'ACTIVE' : 'DISABLED'}
+        </button>
+      </td>
+      <td>
         <button class="btn btn-success btn-sm" onclick="openEditUser('${u.id}','${u.email}','${u.role||'user'}')">Edit</button>
         <button class="btn btn-danger btn-sm" style="margin-left:6px" onclick="deleteUser('${u.id}')">Delete</button>
       </td>
-    </tr>`).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:40px">No users found</td></tr>`;
+    </tr>`;
+  }).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">No users found</td></tr>`;
+}
+
+async function toggleUserWithdrawals(userId, enabled) {
+  try {
+    // Check if user has a wallet record first, or just try to update
+    await sb(`wallets?user_id=eq.${userId}`, {
+      method: 'PATCH',
+      body: { withdrawals_enabled: enabled }
+    }).then(async res => {
+      // If no record was updated, we might need to insert one
+      if (res.length === 0) {
+        await sb('wallets', {
+          method: 'POST',
+          body: { user_id: userId, withdrawals_enabled: enabled },
+          prefer: 'return=minimal'
+        });
+      }
+    });
+
+    toast(`Withdrawals ${enabled ? 'enabled' : 'disabled'}`, 'success');
+    loadUsers();
+  } catch(e) {
+    // Fallback: try updating profiles table if wallets table doesn't exist
+    try {
+      await sb(`profiles?id=eq.${userId}`, {
+        method: 'PATCH',
+        body: { withdrawals_enabled: enabled }
+      });
+      toast(`Withdrawals ${enabled ? 'enabled' : 'disabled'} (in profiles)`, 'success');
+      loadUsers();
+    } catch(e2) {
+      toast('Error: ' + e.message, 'error');
+    }
+  }
 }
 
 function filterUsers(q) { renderUsers(allUsers.filter(u => u.email?.toLowerCase().includes(q.toLowerCase()))); }
