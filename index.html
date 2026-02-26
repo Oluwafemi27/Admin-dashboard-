@@ -1338,7 +1338,7 @@ async function toggleUserWithdrawals(userId, enabled) {
     // Fallback: try updating profiles table if wallets table doesn't exist
     try {
       console.log(`Wallet update failed, falling back to profiles table:`, e.message);
-      await sb(`profiles?user_id=eq.${userId}`, {
+      await sb(`profiles?id=eq.${userId}`, {
         method: 'PATCH',
         body: { withdrawals_enabled: enabled }
       });
