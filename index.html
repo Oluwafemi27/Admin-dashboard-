@@ -1300,7 +1300,7 @@ function renderUsers(data) {
       <td style="font-family:'JetBrains Mono';font-size:12px">$${parseFloat(u.wallet_balance || 0).toFixed(2)}</td>
       <td style="color:var(--muted);font-size:12px">${fmt(u.created_at)}</td>
       <td>
-        <button class="btn ${wStatus ? 'btn-success' : 'btn-danger'} btn-sm" onclick="toggleUserWithdrawals('${u.id}', ${!wStatus})" style="min-width:80px">
+        <button class="btn ${wStatus ? 'btn-success' : 'btn-danger'} btn-sm" onclick="toggleUserWithdrawals('${u.user_id}', ${!wStatus})" style="min-width:80px">
           ${wStatus ? 'ACTIVE' : 'DISABLED'}
         </button>
       </td>
