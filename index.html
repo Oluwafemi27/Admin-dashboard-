@@ -908,6 +908,27 @@ vercel --prod</code>
           <h4>Connect your Lovable app to new tables</h4>
           <p>In your Lovable app, use the Supabase client to read/write to the new tables. The connection string stays the same — just add queries for <code style="display:inline;padding:2px 6px;border-radius:4px;background:var(--bg)">accounts</code>, <code style="display:inline;padding:2px 6px;border-radius:4px;background:var(--bg)">messages</code>, and <code style="display:inline;padding:2px 6px;border-radius:4px;background:var(--bg)">notifications</code>.</p>
         </div>
+
+        <div class="setup-step">
+          <h4>Fix Schema Issues (If Getting Column Errors)</h4>
+          <p>If you see errors about missing columns, run this SQL in your Supabase SQL editor:</p>
+          <code>-- Add missing body column to notifications table (if it doesn't exist)
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS body TEXT;
+
+-- Verify notifications table structure
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_name = 'notifications'
+ORDER BY ordinal_position;</code>
+          <p style="margin-top:10px;color:var(--warning)">If the column still doesn't appear after running this, drop and recreate the entire table using the SQL from Step 1.</p>
+        </div>
+
+        <div class="setup-step">
+          <h4>Test Connection & Sync</h4>
+          <p>Click the button below to test your Supabase connection and verify that all changes are syncing properly. Check your browser console (F12) for detailed logs.</p>
+          <button class="btn btn-success" onclick="testSupabaseConnection()" style="margin-top:12px">Test Connection</button>
+          <div id="diagnostics-output" style="margin-top:12px;background:var(--bg);padding:12px;border-radius:6px;display:none;font-family:'JetBrains Mono';font-size:12px;line-height:1.6;max-height:300px;overflow-y:auto;color:var(--muted)"></div>
+        </div>
       </div>
     </div>
 
@@ -1200,23 +1221,31 @@ async function loadUsers() {
       }
     } catch(e) { console.warn('Settings table error:', e.message); }
 
-    // Attempt to join with wallets table
-    allUsers = await sb('profiles?select=*,wallets(withdrawals_enabled)&order=created_at.desc');
+    // Attempt to load profiles
+    allUsers = await sb('profiles?order=created_at.desc');
     console.log('Loaded users:', allUsers);
+
     if (allUsers.length === 0) {
       tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:40px">No users found. Check if profiles table exists and has data.</td></tr>`;
       return;
     }
-    renderUsers(allUsers);
-  } catch(e) {
-    console.warn('Join with wallets failed, falling back to profiles only:', e.message);
+
+    // Try to enrich with wallets data
     try {
-      allUsers = await sb('profiles?select=*&order=created_at.desc');
-      renderUsers(allUsers);
-    } catch(e2) {
-      console.error('Load users error:', e2);
-      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--danger);padding:20px">Error: ${e2.message}</td></tr>`;
+      const wallets = await sb('wallets?select=user_id,withdrawals_enabled');
+      allUsers = allUsers.map(u => {
+        const wallet = wallets.find(w => w.user_id === u.id);
+        return { ...u, wallets: wallet ? [wallet] : [] };
+      });
+      console.log('Enriched users with wallets data:', allUsers);
+    } catch(e) {
+      console.warn('Could not load wallets data:', e.message);
     }
+
+    renderUsers(allUsers);
+  } catch(e2) {
+    console.error('Load users error:', e2);
+    tbody.innerHTML = `<tr><td colspan="7" style="color:var(--danger);padding:20px">Error: ${e2.message}</td></tr>`;
   }
 }
 
@@ -1230,16 +1259,19 @@ function updateGlobalWithdrawalsBtn() {
 async function toggleGlobalWithdrawals() {
   const newState = !globalWithdrawalsEnabled;
   try {
+    console.log('Attempting to update global withdrawals setting to:', newState);
     await sb('settings?key=eq.withdrawals_enabled', {
       method: 'PATCH',
       body: { value: newState }
     });
     globalWithdrawalsEnabled = newState;
     updateGlobalWithdrawalsBtn();
-    toast(`Global withdrawals ${newState ? 'enabled' : 'disabled'}`, 'success');
+    console.log('✓ Global withdrawals setting updated successfully:', newState);
+    toast(`✓ Global withdrawals ${newState ? 'enabled' : 'disabled'}`, 'success');
   } catch(e) {
     // Try insert if patch fails
     try {
+      console.log('PATCH failed, attempting POST:', e.message);
       await sb('settings', {
         method: 'POST',
         body: { key: 'withdrawals_enabled', value: newState },
@@ -1247,9 +1279,11 @@ async function toggleGlobalWithdrawals() {
       });
       globalWithdrawalsEnabled = newState;
       updateGlobalWithdrawalsBtn();
-      toast(`Global withdrawals ${newState ? 'enabled' : 'disabled'}`, 'success');
+      console.log('✓ Global withdrawals setting created successfully:', newState);
+      toast(`✓ Global withdrawals ${newState ? 'enabled' : 'disabled'}`, 'success');
     } catch(e2) {
-      toast('Error: ' + e.message, 'error');
+      console.error('Failed to update global withdrawals:', e2.message);
+      toast('Error updating withdrawals: ' + e2.message, 'error');
     }
   }
 }
@@ -1280,34 +1314,40 @@ function renderUsers(data) {
 
 async function toggleUserWithdrawals(userId, enabled) {
   try {
+    console.log(`Toggling withdrawals for user ${userId} to:`, enabled);
     // Check if user has a wallet record first, or just try to update
-    await sb(`wallets?user_id=eq.${userId}`, {
+    const result = await sb(`wallets?user_id=eq.${userId}`, {
       method: 'PATCH',
       body: { withdrawals_enabled: enabled }
-    }).then(async res => {
-      // If no record was updated, we might need to insert one
-      if (!res || res.length === 0) {
-        await sb('wallets', {
-          method: 'POST',
-          body: { user_id: userId, withdrawals_enabled: enabled },
-          prefer: 'return=minimal'
-        });
-      }
     });
 
-    toast(`Withdrawals ${enabled ? 'enabled' : 'disabled'}`, 'success');
+    // If no record was updated, we might need to insert one
+    if (!result || result.length === 0) {
+      console.log(`No wallet found for user ${userId}, creating new record`);
+      await sb('wallets', {
+        method: 'POST',
+        body: { user_id: userId, withdrawals_enabled: enabled },
+        prefer: 'return=minimal'
+      });
+    }
+
+    console.log(`✓ User ${userId} withdrawal status updated successfully:`, enabled);
+    toast(`✓ Withdrawals ${enabled ? 'enabled' : 'disabled'}`, 'success');
     loadUsers();
   } catch(e) {
     // Fallback: try updating profiles table if wallets table doesn't exist
     try {
+      console.log(`Wallet update failed, falling back to profiles table:`, e.message);
       await sb(`profiles?id=eq.${userId}`, {
         method: 'PATCH',
         body: { withdrawals_enabled: enabled }
       });
-      toast(`Withdrawals ${enabled ? 'enabled' : 'disabled'} (in profiles)`, 'success');
+      console.log(`✓ User ${userId} withdrawal status updated in profiles:`, enabled);
+      toast(`✓ Withdrawals ${enabled ? 'enabled' : 'disabled'} (in profiles)`, 'success');
       loadUsers();
     } catch(e2) {
-      toast('Error: ' + e.message, 'error');
+      console.error('Failed to update user withdrawal status:', e2.message);
+      toast('Error: ' + e2.message, 'error');
     }
   }
 }
@@ -1331,9 +1371,11 @@ async function saveUser() {
   const role = document.getElementById('edit-user-role').value;
   const wallet_balance = parseFloat(document.getElementById('edit-user-wallet').value) || 0;
   try {
+    console.log('Saving user:', { id, email, username, role, wallet_balance });
     // Update profiles table
     await sb(`profiles?id=eq.${id}`, { method: 'PATCH', body: { username, role, wallet_balance } });
-    toast('User updated!', 'success');
+    console.log('✓ User saved successfully:', id);
+    toast('✓ User updated!', 'success');
     closeModal('edit-user-modal');
     loadUsers();
   } catch(e) {
@@ -1359,6 +1401,14 @@ async function loadAccounts() {
   const tbody = document.getElementById('accounts-tbody');
   tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr>`;
   try {
+    // Load global settings
+    try {
+      const settings = await sb('settings?key=eq.withdrawals_enabled');
+      if (settings.length > 0) {
+        globalWithdrawalsEnabled = settings[0].value === true || settings[0].value === 'true';
+      }
+    } catch(e) { console.warn('Settings table error:', e.message); }
+
     allAccounts = await sb('accounts?select=*&order=created_at.desc');
     renderAccounts(allAccounts);
   } catch(e) { tbody.innerHTML = `<tr><td colspan="6" style="color:var(--danger);padding:20px">Error: ${e.message}</td></tr>`; }
@@ -1366,7 +1416,9 @@ async function loadAccounts() {
 
 function renderAccounts(data) {
   const tbody = document.getElementById('accounts-tbody');
-  tbody.innerHTML = data.length ? data.map(a => `
+  const withdrawalsStatus = globalWithdrawalsEnabled ? '' : `<tr><td colspan="6" style="background-color:var(--danger);color:white;padding:15px;text-align:center;font-weight:bold">⚠️  Global Withdrawals are DISABLED - Accounts cannot be edited</td></tr>`;
+
+  const tableRows = data.length ? data.map(a => `
     <tr>
       <td>${a.full_name}</td>
       <td>${a.bank_name}</td>
@@ -1374,10 +1426,12 @@ function renderAccounts(data) {
       <td style="font-family:'JetBrains Mono';font-size:11px;color:var(--muted)">${a.user_id?.slice(0,8)}…</td>
       <td style="color:var(--muted);font-size:12px">${fmt(a.created_at)}</td>
       <td>
-        <button class="btn btn-success btn-sm" onclick="openEditAccount('${a.id}','${a.full_name}','${a.bank_name}','${a.account_number}')">Edit</button>
-        <button class="btn btn-danger btn-sm" style="margin-left:6px" onclick="deleteAccount('${a.id}')">Delete</button>
+        <button class="btn btn-success btn-sm" onclick="openEditAccount('${a.id}','${a.full_name}','${a.bank_name}','${a.account_number}')" ${!globalWithdrawalsEnabled ? 'disabled' : ''}>Edit</button>
+        <button class="btn btn-danger btn-sm" style="margin-left:6px" onclick="deleteAccount('${a.id}')" ${!globalWithdrawalsEnabled ? 'disabled' : ''}>Delete</button>
       </td>
     </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">No accounts submitted yet</td></tr>`;
+
+  tbody.innerHTML = withdrawalsStatus + tableRows;
 }
 
 function filterAccounts(q) {
@@ -1386,6 +1440,10 @@ function filterAccounts(q) {
 }
 
 function openEditAccount(id, name, bank, num) {
+  if (!globalWithdrawalsEnabled) {
+    toast('Cannot edit accounts while global withdrawals are disabled', 'error');
+    return;
+  }
   document.getElementById('edit-acc-id').value = id;
   document.getElementById('edit-acc-name').value = name;
   document.getElementById('edit-acc-bank').value = bank;
@@ -1394,23 +1452,36 @@ function openEditAccount(id, name, bank, num) {
 }
 
 async function saveAccount() {
+  if (!globalWithdrawalsEnabled) {
+    toast('Cannot save accounts while global withdrawals are disabled', 'error');
+    return;
+  }
   const id = document.getElementById('edit-acc-id').value;
+  const full_name = document.getElementById('edit-acc-name').value;
+  const bank_name = document.getElementById('edit-acc-bank').value;
+  const account_number = document.getElementById('edit-acc-num').value;
+
   try {
+    console.log('Saving account:', { id, full_name, bank_name, account_number });
     await sb(`accounts?id=eq.${id}`, {
       method: 'PATCH',
-      body: {
-        full_name: document.getElementById('edit-acc-name').value,
-        bank_name: document.getElementById('edit-acc-bank').value,
-        account_number: document.getElementById('edit-acc-num').value
-      }
+      body: { full_name, bank_name, account_number }
     });
+    console.log('✓ Account saved successfully:', id);
     closeModal('edit-account-modal');
-    toast('Account updated!', 'success');
+    toast('✓ Account updated!', 'success');
     loadAccounts();
-  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  } catch(e) {
+    console.error('Save account error:', e.message);
+    toast('Error: ' + e.message, 'error');
+  }
 }
 
 async function deleteAccount(id) {
+  if (!globalWithdrawalsEnabled) {
+    toast('Cannot delete accounts while global withdrawals are disabled', 'error');
+    return;
+  }
   if(!confirm('Delete this account record?')) return;
   try {
     await sb(`accounts?id=eq.${id}`, { method: 'DELETE', prefer: 'return=minimal' });
@@ -1501,13 +1572,16 @@ async function sendNotification() {
       console.log(`👥 Found ${users.length} users`);
       const inserts = users.map(u => ({ user_id: u.id, title, body }));
       // Batch insert
-      console.log('📮 Inserting notifications...');
+      console.log('📮 Inserting notifications...', inserts[0]);
       await sb('notifications', { method: 'POST', body: inserts, prefer: 'return=minimal' });
+      console.log(`✓ Notifications inserted successfully for ${users.length} users`);
       toast(`✓ Notification sent to ${users.length} users!`, 'success');
     } else {
       if(!userId) { toast('Please enter a User ID', 'error'); return; }
-      console.log(`📮 Inserting notification for user: ${userId}`);
-      await sb('notifications', { method: 'POST', body: { user_id: userId, title, body }, prefer: 'return=minimal' });
+      const payload = { user_id: userId, title, body };
+      console.log(`📮 Inserting notification for user: ${userId}`, payload);
+      await sb('notifications', { method: 'POST', body: payload, prefer: 'return=minimal' });
+      console.log('✓ Notification inserted successfully');
       toast('✓ Notification sent!', 'success');
     }
     document.getElementById('notif-title').value = '';
@@ -1516,7 +1590,19 @@ async function sendNotification() {
     loadStats();
   } catch(e) {
     console.error('❌ Notification error:', e);
-    toast('Error: ' + e.message, 'error');
+    console.error('Full error details:', {
+      message: e.message,
+      code: e.code,
+      details: e.details,
+      hint: e.hint
+    });
+
+    // Check if it's a schema/column issue
+    if(e.message && e.message.includes('body')) {
+      toast('Error: The "body" column is missing from the notifications table. Check the Setup Guide and run the migration SQL.', 'error');
+    } else {
+      toast('Error: ' + e.message, 'error');
+    }
   }
 }
 
@@ -1554,6 +1640,96 @@ function timeAgo(iso) {
   return `${Math.floor(diff/86400)}d ago`;
 }
 
+async function testSupabaseConnection() {
+  const output = document.getElementById('diagnostics-output');
+  output.style.display = 'block';
+  output.innerHTML = '<span style="color:var(--muted)">Testing...</span>';
+
+  let log = [];
+  const addLog = (msg, type = 'info') => {
+    const icon = type === 'error' ? '✕' : type === 'success' ? '✓' : '→';
+    const color = type === 'error' ? 'var(--danger)' : type === 'success' ? 'var(--success)' : 'var(--muted)';
+    log.push(`<span style="color:${color}">${icon} ${msg}</span>`);
+  };
+
+  try {
+    addLog('Starting connection test...', 'info');
+
+    // Test basic connectivity
+    addLog('Supabase URL: ' + SUPABASE_URL);
+    const hasKey = SUPABASE_KEY ? 'Yes (hidden)' : 'No - ERROR!';
+    addLog('API Key present: ' + hasKey, SUPABASE_KEY ? 'success' : 'error');
+
+    // Test table access
+    addLog('', 'info');
+    addLog('Testing table access...', 'info');
+
+    try {
+      const profiles = await sbCount('profiles');
+      addLog(`Profiles table: ${profiles} records found`, 'success');
+    } catch(e) {
+      addLog(`Profiles table error: ${e.message}`, 'error');
+    }
+
+    try {
+      const accounts = await sbCount('accounts');
+      addLog(`Accounts table: ${accounts} records found`, 'success');
+    } catch(e) {
+      addLog(`Accounts table error: ${e.message}`, 'error');
+    }
+
+    try {
+      const wallets = await sbCount('wallets');
+      addLog(`Wallets table: ${wallets} records found`, 'success');
+    } catch(e) {
+      addLog(`Wallets table error: ${e.message}`, 'error');
+    }
+
+    try {
+      const settings = await sbCount('settings');
+      addLog(`Settings table: ${settings} records found`, 'success');
+    } catch(e) {
+      addLog(`Settings table error: ${e.message}`, 'error');
+    }
+
+    try {
+      const notifications = await sbCount('notifications');
+      addLog(`Notifications table: ${notifications} records found`, 'success');
+
+      // Try to fetch one notification to verify columns exist
+      try {
+        const sample = await sb('notifications?limit=1');
+        if(sample.length > 0) {
+          const cols = Object.keys(sample[0]);
+          addLog(`Notification columns: ${cols.join(', ')}`, cols.includes('body') ? 'success' : 'error');
+          if(!cols.includes('body')) {
+            addLog('⚠️  Missing "body" column! Run the migration SQL from Setup Guide step 8.', 'error');
+          }
+        }
+      } catch(e) {
+        addLog(`Cannot verify notification columns: ${e.message}`, 'error');
+      }
+    } catch(e) {
+      addLog(`Notifications table error: ${e.message}`, 'error');
+    }
+
+    // Test real-time status
+    addLog('', 'info');
+    addLog('Real-time status:', 'info');
+    addLog(`Supabase client: ${supabaseClient ? 'Connected' : 'Not connected'}`, supabaseClient ? 'success' : 'error');
+    addLog(`Global withdrawals enabled: ${globalWithdrawalsEnabled ? 'Yes' : 'No'}`, 'success');
+
+    addLog('', 'info');
+    addLog('All tests completed! Check browser console for more details.', 'success');
+
+  } catch(e) {
+    addLog('Test failed: ' + e.message, 'error');
+  }
+
+  output.innerHTML = log.join('<br>');
+  console.log('🔧 Diagnostics:', log.join('\n'));
+}
+
 // ════════════════════════════════════════════
 //  REALTIME SUBSCRIPTIONS
 // ════════════════════════════════════════════
@@ -1564,9 +1740,11 @@ async function initRealtime() {
     const { createClient } = window.supabase;
     supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
     subscribeToRealtimeChanges();
-    console.log('✓ Real-time subscriptions initialized');
+    console.log('✓ Real-time subscriptions initialized successfully');
+    toast('Real-time sync enabled', 'success');
   } catch(e) {
-    console.warn('Real-time init error:', e.message);
+    console.error('Real-time init error:', e.message);
+    toast('Warning: Real-time sync failed - changes may not sync automatically', 'warning');
   }
 }
 
@@ -1660,6 +1838,10 @@ function subscribeToRealtimeChanges() {
         if (settings.length > 0) {
           globalWithdrawalsEnabled = settings[0].value === true || settings[0].value === 'true';
           updateGlobalWithdrawalsBtn();
+          // Reload accounts page if visible to reflect withdrawal status
+          if(document.getElementById('page-accounts').classList.contains('active')) {
+            loadAccounts();
+          }
         }
       } catch(e) {
         console.warn('Error updating global withdrawal status:', e.message);
