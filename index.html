@@ -1234,7 +1234,7 @@ async function loadUsers() {
     try {
       const wallets = await sb('wallets?select=user_id,withdrawals_enabled');
       allUsers = allUsers.map(u => {
-        const wallet = wallets.find(w => w.user_id === u.id);
+        const wallet = wallets.find(w => w.user_id === u.user_id);
         return { ...u, wallets: wallet ? [wallet] : [] };
       });
       console.log('Enriched users with wallets data:', allUsers);
