@@ -1331,18 +1331,15 @@ async function saveUser() {
   const role = document.getElementById('edit-user-role').value;
   const wallet_balance = parseFloat(document.getElementById('edit-user-wallet').value) || 0;
   try {
-    // Try updating with wallet_balance
-    try {
-      await sb(`profiles?id=eq.${id}`, { method: 'PATCH', body: { username, role, wallet_balance } });
-    } catch(walletErr) {
-      // If wallet_balance fails due to schema cache, try without it
-      console.warn('Wallet update failed, trying without wallet_balance:', walletErr.message);
-      await sb(`profiles?id=eq.${id}`, { method: 'PATCH', body: { username, role } });
-    }
-    closeModal('edit-user-modal');
+    // Update profiles table
+    await sb(`profiles?id=eq.${id}`, { method: 'PATCH', body: { username, role, wallet_balance } });
     toast('User updated!', 'success');
+    closeModal('edit-user-modal');
     loadUsers();
-  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+    console.error('Save user error:', e.message);
+  }
 }
 
 async function deleteUser(id) {
@@ -1646,10 +1643,18 @@ function subscribeToRealtimeChanges() {
     .on('postgres_changes', {
       event: '*',
       schema: 'public',
-      table: 'settings2'
-    }, (payload) => {
-      console.log('⚙️  Settings changed:', payload.eventType);
-      updateGlobalWithdrawalsBtn();
+      table: 'settings'
+    }, async (payload) => {
+      console.log('⚙️  Settings changed:', payload.eventType, payload);
+      try {
+        const settings = await sb('settings?key=eq.withdrawals_enabled');
+        if (settings.length > 0) {
+          globalWithdrawalsEnabled = settings[0].value === true || settings[0].value === 'true';
+          updateGlobalWithdrawalsBtn();
+        }
+      } catch(e) {
+        console.warn('Error updating global withdrawal status:', e.message);
+      }
     })
     .subscribe();
 }
