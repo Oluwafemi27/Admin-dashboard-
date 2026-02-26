@@ -1167,9 +1167,17 @@ async function loadUsers() {
   const tbody = document.getElementById('users-tbody');
   tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:30px">Loading…</td></tr>`;
   try {
-    allUsers = await sb('profiles?select=*&order=created_at.desc');
+    allUsers = await sb('profiles?select=*');
+    console.log('Loaded users:', allUsers);
+    if (allUsers.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">No users found. Check if profiles table exists and has data.</td></tr>`;
+      return;
+    }
     renderUsers(allUsers);
-  } catch(e) { tbody.innerHTML = `<tr><td colspan="6" style="color:var(--danger);padding:20px">Error: ${e.message}</td></tr>`; }
+  } catch(e) {
+    console.error('Load users error:', e);
+    tbody.innerHTML = `<tr><td colspan="6" style="color:var(--danger);padding:20px">Error: ${e.message}</td></tr>`;
+  }
 }
 
 function renderUsers(data) {
