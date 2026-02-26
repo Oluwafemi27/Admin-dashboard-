@@ -910,6 +910,20 @@ vercel --prod</code>
         </div>
 
         <div class="setup-step">
+          <h4>Fix Schema Issues (If Getting Column Errors)</h4>
+          <p>If you see errors about missing columns, run this SQL in your Supabase SQL editor:</p>
+          <code>-- Add missing body column to notifications table (if it doesn't exist)
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS body TEXT;
+
+-- Verify notifications table structure
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_name = 'notifications'
+ORDER BY ordinal_position;</code>
+          <p style="margin-top:10px;color:var(--warning)">If the column still doesn't appear after running this, drop and recreate the entire table using the SQL from Step 1.</p>
+        </div>
+
+        <div class="setup-step">
           <h4>Test Connection & Sync</h4>
           <p>Click the button below to test your Supabase connection and verify that all changes are syncing properly. Check your browser console (F12) for detailed logs.</p>
           <button class="btn btn-success" onclick="testSupabaseConnection()" style="margin-top:12px">Test Connection</button>
@@ -1558,13 +1572,16 @@ async function sendNotification() {
       console.log(`👥 Found ${users.length} users`);
       const inserts = users.map(u => ({ user_id: u.id, title, body }));
       // Batch insert
-      console.log('📮 Inserting notifications...');
+      console.log('📮 Inserting notifications...', inserts[0]);
       await sb('notifications', { method: 'POST', body: inserts, prefer: 'return=minimal' });
+      console.log(`✓ Notifications inserted successfully for ${users.length} users`);
       toast(`✓ Notification sent to ${users.length} users!`, 'success');
     } else {
       if(!userId) { toast('Please enter a User ID', 'error'); return; }
-      console.log(`📮 Inserting notification for user: ${userId}`);
-      await sb('notifications', { method: 'POST', body: { user_id: userId, title, body }, prefer: 'return=minimal' });
+      const payload = { user_id: userId, title, body };
+      console.log(`📮 Inserting notification for user: ${userId}`, payload);
+      await sb('notifications', { method: 'POST', body: payload, prefer: 'return=minimal' });
+      console.log('✓ Notification inserted successfully');
       toast('✓ Notification sent!', 'success');
     }
     document.getElementById('notif-title').value = '';
@@ -1573,7 +1590,19 @@ async function sendNotification() {
     loadStats();
   } catch(e) {
     console.error('❌ Notification error:', e);
-    toast('Error: ' + e.message, 'error');
+    console.error('Full error details:', {
+      message: e.message,
+      code: e.code,
+      details: e.details,
+      hint: e.hint
+    });
+
+    // Check if it's a schema/column issue
+    if(e.message && e.message.includes('body')) {
+      toast('Error: The "body" column is missing from the notifications table. Check the Setup Guide and run the migration SQL.', 'error');
+    } else {
+      toast('Error: ' + e.message, 'error');
+    }
   }
 }
 
@@ -1661,6 +1690,27 @@ async function testSupabaseConnection() {
       addLog(`Settings table: ${settings} records found`, 'success');
     } catch(e) {
       addLog(`Settings table error: ${e.message}`, 'error');
+    }
+
+    try {
+      const notifications = await sbCount('notifications');
+      addLog(`Notifications table: ${notifications} records found`, 'success');
+
+      // Try to fetch one notification to verify columns exist
+      try {
+        const sample = await sb('notifications?limit=1');
+        if(sample.length > 0) {
+          const cols = Object.keys(sample[0]);
+          addLog(`Notification columns: ${cols.join(', ')}`, cols.includes('body') ? 'success' : 'error');
+          if(!cols.includes('body')) {
+            addLog('⚠️  Missing "body" column! Run the migration SQL from Setup Guide step 8.', 'error');
+          }
+        }
+      } catch(e) {
+        addLog(`Cannot verify notification columns: ${e.message}`, 'error');
+      }
+    } catch(e) {
+      addLog(`Notifications table error: ${e.message}`, 'error');
     }
 
     // Test real-time status
